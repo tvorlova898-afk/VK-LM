@@ -1,324 +1,240 @@
-(function () {
-    "use strict";
 
-    const state = {
-        step: 1,
-        product: null,
-        goal: null,
-        resources: null
-    };
+const state = {
+    step: 1,
+    product: null,
+    goal: null,
+    resources: null
+};
 
-    const screen = document.getElementById("screen");
-    const brand = document.getElementById("brand");
-    const stepCounter = document.getElementById("stepCounter");
-
-    if (!screen) {
-        return;
-    }
-
-    if (typeof CONFIG === "undefined") {
-        screen.innerHTML = `
-            <div class="screen-inner">
-                <h1 class="title">Ошибка загрузки</h1>
-                <p class="subtitle">
-                    Не найден файл config.js.
-                </p>
-            </div>
-        `;
-        return;
-    }
-
-    brand.textContent = CONFIG.brand || "";
-
-    function updateStep(number) {
-        state.step = number;
-
-        if (stepCounter) {
-            stepCounter.textContent =
-                number <= 3
-                    ? `${number} / 3`
-                    : "";
+async function initVK() {
+    try {
+        if (window.vkBridge && typeof window.vkBridge.send === "function") {
+            await Promise.race([
+                window.vkBridge.send("VKWebAppInit"),
+                new Promise(resolve => setTimeout(resolve, 1000))
+            ]);
         }
+    } catch (error) {
+        console.log("VK Bridge init skipped:", error);
     }
+}
 
-    function escapeHtml(value) {
-        return String(value || "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
+function renderBrand() {
+    const brandElement = document.getElementById("brand");
+    if (brandElement) brandElement.textContent = CONFIG.brand || "";
+}
 
-    function renderStart() {
-        updateStep(1);
+function updateStepCounter() {
+    const counter = document.getElementById("stepCounter");
+    if (!counter) return;
+    counter.textContent = state.step <= 3 ? `${state.step} / 3` : "Результат";
+}
 
-        screen.innerHTML = `
-            <div class="screen-inner">
+function restartAnimation() {
+    const screen = document.getElementById("screen");
+    if (!screen) return;
 
-                <div class="eyebrow">
-                    Интерактивная диагностика
-                </div>
+    screen.style.animation = "none";
 
-                <h1 class="title">
-                    ${escapeHtml(
-                        CONFIG.title ||
-                        "Что вам на самом деле нужно?"
-                    )}
-                </h1>
+    requestAnimationFrame(() => {
+        screen.style.animation = "";
+    });
+}
 
-                <p class="subtitle">
-                    ${escapeHtml(
-                        CONFIG.subtitle ||
-                        "Ответьте на три вопроса — и получите персональную механику."
-                    )}
-                </p>
+function render(content) {
+    const screen = document.getElementById("screen");
+    if (!screen) return;
 
-                <div class="question">
-                    Что вы продаёте?
-                </div>
+    screen.innerHTML = content;
+    restartAnimation();
+}
 
-                <div class="options">
-                    ${renderOptions(CONFIG.products || [], "product")}
-                </div>
+function createOption(item, type) {
+    return `
+        <button class="option-button" type="button"
+            data-type="${type}" data-value="${item.id}">
+            <span class="option-title">${item.title}</span>
+            ${item.description ? `<span class="option-description">${item.description}</span>` : ""}
+        </button>
+    `;
+}
 
+function attachOptionHandlers() {
+    document.querySelectorAll(".option-button").forEach(button => {
+        button.addEventListener("click", () => {
+            const type = button.dataset.type;
+            const value = button.dataset.value;
+
+            if (type === "product") {
+                state.product = value;
+                state.step = 2;
+                renderGoalQuestion();
+            } else if (type === "goal") {
+                state.goal = value;
+                state.step = 3;
+                renderResourcesQuestion();
+            } else if (type === "resources") {
+                state.resources = value;
+                state.step = 4;
+                renderResult();
+            }
+        });
+    });
+}
+
+function renderStart() {
+    state.step = 1;
+    updateStepCounter();
+
+    render(`
+        <section class="start-card">
+            <div class="eyebrow">Интерактивная диагностика</div>
+            <h1>${CONFIG.title}</h1>
+            <p class="subtitle">${CONFIG.subtitle}</p>
+            <button class="primary-button" type="button" id="startButton">
+                Начать
+            </button>
+        </section>
+    `);
+
+    document.getElementById("startButton").addEventListener("click", () => {
+        state.step = 1;
+        renderProductQuestion();
+    });
+}
+
+function renderProductQuestion() {
+    state.step = 1;
+    updateStepCounter();
+
+    render(`
+        <section class="question-card">
+            <div class="eyebrow">Вопрос 1</div>
+            <h2>Что вы продаёте?</h2>
+            <div class="option-list">
+                ${CONFIG.products.map(item => createOption(item, "product")).join("")}
             </div>
-        `;
+        </section>
+    `);
 
-        bindOptions("product");
-    }
+    attachOptionHandlers();
+}
 
-    function renderOptions(items, type) {
-        return items.map(function (item) {
-            return `
-                <button
-                    type="button"
-                    class="option"
-                    data-type="${escapeHtml(type)}"
-                    data-id="${escapeHtml(item.id)}"
-                >
-                    <span class="option-title">
-                        ${escapeHtml(item.title)}
-                    </span>
+function renderGoalQuestion() {
+    state.step = 2;
+    updateStepCounter();
 
-                    ${
-                        item.description
-                            ? `
-                                <span class="option-description">
-                                    ${escapeHtml(item.description)}
-                                </span>
-                            `
-                            : ""
-                    }
-                </button>
-            `;
-        }).join("");
-    }
+    render(`
+        <section class="question-card">
+            <div class="eyebrow">Вопрос 2</div>
+            <h2>Какая сейчас главная задача?</h2>
+            <div class="option-list">
+                ${CONFIG.goals.map(item => createOption(item, "goal")).join("")}
+            </div>
+        </section>
+    `);
 
-    function bindOptions(type) {
-        const buttons = screen.querySelectorAll(
-            `.option[data-type="${type}"]`
-        );
+    attachOptionHandlers();
+}
 
-        buttons.forEach(function (button) {
-            button.addEventListener("click", function () {
-                const id = button.dataset.id;
+function renderResourcesQuestion() {
+    state.step = 3;
+    updateStepCounter();
 
-                if (type === "product") {
-                    state.product = id;
-                    renderGoal();
-                }
+    render(`
+        <section class="question-card">
+            <div class="eyebrow">Вопрос 3</div>
+            <h2>Сколько ресурсов вы готовы вложить?</h2>
+            <div class="option-list">
+                ${CONFIG.resources.map(item => createOption(item, "resources")).join("")}
+            </div>
+        </section>
+    `);
 
-                if (type === "goal") {
-                    state.goal = id;
-                    renderResources();
-                }
+    attachOptionHandlers();
+}
 
-                if (type === "resources") {
-                    state.resources = id;
-                    renderResult();
-                }
-            });
+function getResultKey() {
+    return [state.product, state.goal, state.resources].join("_");
+}
+
+function getResult() {
+    return CONFIG.results[getResultKey()] || CONFIG.results.default;
+}
+
+function renderResult() {
+    state.step = 4;
+    updateStepCounter();
+
+    const result = getResult();
+    const botHelpUrl = CONFIG.botHelpLandingUrl || "#";
+    const botHelpButtonText =
+        CONFIG.materialsButtonText || "Получить полезные материалы";
+
+    render(`
+        <section class="result-card">
+            <div class="result-label">Ваш результат</div>
+            <h1>${result.title}</h1>
+            <p class="result-text">${result.text}</p>
+
+            <!-- КНОПКА 1: ВК-ЛЕНДИНГ BOTHELP -->
+            <a class="primary-button"
+                href="${botHelpUrl}"
+                target="_blank"
+                rel="noopener noreferrer"
+                id="materialsButton">
+                ${botHelpButtonText}
+            </a>
+
+            <!-- КНОПКА 2: ЛИЧНЫЕ СООБЩЕНИЯ ВК -->
+            <a class="secondary-button"
+                href="${CONFIG.personalMessagesUrl}"
+                target="_blank"
+                rel="noopener noreferrer">
+                ${CONFIG.resultButtonText || "Обсудить мой результат"}
+            </a>
+
+            <!-- КНОПКА 3: ПОВТОРНАЯ ДИАГНОСТИКА -->
+            <button class="secondary-button"
+                type="button"
+                id="restartButton">
+                ${CONFIG.restartButtonText || "Пройти заново"}
+            </button>
+        </section>
+    `);
+
+    // Проверяем, добавлена ли ссылка на лендинг BotHelp.
+    const materialsButton = document.getElementById("materialsButton");
+
+    if (
+        materialsButton &&
+        (
+            !CONFIG.botHelpLandingUrl ||
+            CONFIG.botHelpLandingUrl ===
+                "ВСТАВЬ_СЮДА_ССЫЛКУ_НА_ВК-ЛЕНДИНГ"
+        )
+    ) {
+        materialsButton.addEventListener("click", event => {
+            event.preventDefault();
+
+            alert(
+                "Сначала вставьте ссылку на ВК-лендинг BotHelp в файл public/config.js."
+            );
         });
     }
 
-    function renderGoal() {
-        updateStep(2);
+    // Кнопка повторного прохождения диагностики.
+    document.getElementById("restartButton").addEventListener("click", () => {
+        state.product = null;
+        state.goal = null;
+        state.resources = null;
 
-        screen.innerHTML = `
-            <div class="screen-inner">
+        renderProductQuestion();
+    });
+}
 
-                <div class="eyebrow">
-                    Вопрос 2 из 3
-                </div>
-
-                <h1 class="title">
-                    Какая задача сейчас главная?
-                </h1>
-
-                <p class="subtitle">
-                    Выберите то, что важнее всего прямо сейчас.
-                </p>
-
-                <div class="options">
-                    ${renderOptions(CONFIG.goals || [], "goal")}
-                </div>
-
-            </div>
-        `;
-
-        bindOptions("goal");
-    }
-
-    function renderResources() {
-        updateStep(3);
-
-        screen.innerHTML = `
-            <div class="screen-inner">
-
-                <div class="eyebrow">
-                    Последний вопрос
-                </div>
-
-                <h1 class="title">
-                    Сколько ресурсов готовы вложить?
-                </h1>
-
-                <p class="subtitle">
-                    Это поможет подобрать механику без лишней сложности.
-                </p>
-
-                <div class="options">
-                    ${renderOptions(
-                        CONFIG.resources || [],
-                        "resources"
-                    )}
-                </div>
-
-            </div>
-        `;
-
-        bindOptions("resources");
-    }
-
-    function getResult() {
-        const key =
-            `${state.product}_${state.goal}_${state.resources}`;
-
-        if (
-            CONFIG.results &&
-            CONFIG.results[key]
-        ) {
-            return CONFIG.results[key];
-        }
-
-        if (
-            CONFIG.results &&
-            CONFIG.results.default
-        ) {
-            return CONFIG.results.default;
-        }
-
-        return {
-            name: "Персональная механика",
-            description:
-                "По вашим ответам стоит подобрать механику, которая соответствует вашей задаче, продукту и доступным ресурсам."
-        };
-    }
-
-    function renderResult() {
-        updateStep(4);
-
-        const result = getResult();
-
-        const resultName =
-            result.name ||
-            result.title ||
-            "Персональная механика";
-
-        const resultDescription =
-            result.description ||
-            "";
-
-        const buttonText =
-            CONFIG.resultButtonText ||
-            "Обсудить результат";
-
-        screen.innerHTML = `
-            <div class="screen-inner">
-
-                <div class="eyebrow">
-                    Ваш результат
-                </div>
-
-                <h1 class="title">
-                    Вот что вам подходит
-                </h1>
-
-                <div class="result-card">
-
-                    <div class="result-label">
-                        Рекомендация
-                    </div>
-
-                    <div class="result-name">
-                        ${escapeHtml(resultName)}
-                    </div>
-
-                    <div class="result-description">
-                        ${escapeHtml(resultDescription)}
-                    </div>
-
-                    <div class="actions">
-
-                        <a
-                            class="primary-button messages-button"
-                            href="${escapeHtml(
-                                CONFIG.personalMessagesUrl || "#"
-                            )}"
-                        >
-                            ${escapeHtml(buttonText)}
-                        </a>
-
-                        <button
-                            type="button"
-                            class="secondary-button"
-                            id="restartButton"
-                        >
-                            ${escapeHtml(
-                                CONFIG.restartButtonText ||
-                                "Пройти заново"
-                            )}
-                        </button>
-
-                    </div>
-
-                    <div class="note">
-                        Нажмите кнопку, чтобы перейти к личным сообщениям.
-                    </div>
-
-                </div>
-
-            </div>
-        `;
-
-        const restartButton =
-            document.getElementById("restartButton");
-
-        if (restartButton) {
-            restartButton.addEventListener(
-                "click",
-                function () {
-                    state.product = null;
-                    state.goal = null;
-                    state.resources = null;
-
-                    renderStart();
-                }
-            );
-        }
-    }
-
+document.addEventListener("DOMContentLoaded", async () => {
+    renderBrand();
+    await initVK();
     renderStart();
-
-})();
+});
