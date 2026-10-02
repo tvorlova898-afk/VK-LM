@@ -1,3 +1,4 @@
+
 const CONFIG = {
     // ==========================================
     // НАСТРОЙКИ
@@ -6,6 +7,13 @@ const CONFIG = {
     brand: "Архитектура экспертного бизнеса",
 
     personalMessagesUrl: "https://vk.me/astamarketolog",
+
+    // ССЫЛКА НА ВК-ЛЕНДИНГ BOTHELP:
+    // ВСТАВЬ СВОЮ ССЫЛКУ МЕЖДУ КАВЫЧКАМИ НИЖЕ
+    botHelpLandingUrl: "ВСТАВЬ_СЮДА_ССЫЛКУ_НА_ВК-ЛЕНДИНГ",
+
+    // Текст кнопки перехода на лендинг BotHelp
+    materialsButtonText: "Получить полезные материалы",
 
     communityUrl: "https://vk.ru/pro_bot_auto",
 
