@@ -10,7 +10,7 @@ const CONFIG = {
 
     // ССЫЛКА НА ВК-ЛЕНДИНГ BOTHELP:
     // ВСТАВЬ СВОЮ ССЫЛКУ МЕЖДУ КАВЫЧКАМИ НИЖЕ
-    botHelpLandingUrl: "ВСТАВЬ_СЮДА_ССЫЛКУ_НА_ВК-ЛЕНДИНГ",
+    botHelpLandingUrl: "https://vk.ru/app6379730_-236661576#l=5",
 
     // Текст кнопки перехода на лендинг BotHelp
     materialsButtonText: "Получить полезные материалы",
