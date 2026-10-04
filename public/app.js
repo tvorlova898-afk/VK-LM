@@ -1,312 +1,426 @@
-/*
- * VK Mini App / BotHost
- *
- * Один и тот же файл работает в двух режимах:
- *
- * 1. В браузере:
- *    работает как интерфейс Mini App.
- *
- * 2. В Node.js / BotHost:
- *    запускает простой HTTP-сервер и отдаёт файлы из папки public.
- *
- * Это нужно потому, что BotHost запускает:
- *
- *     node public/app.js
- *
- * а браузерный объект document в Node.js отсутствует.
- */
+// ============================================================
+// VK MINI APP
+// Работает:
+// 1. в браузере / VK Mini App
+// 2. в BotHost через Node.js как HTTP-сервер
+//
+// ВАЖНО:
+// Классы кнопок соответствуют существующему style.css:
+// .option-button
+// .primary-button
+// .secondary-button
+// ============================================================
+
 
 (function () {
-    "use strict";
 
-    /*
-     * ============================================================
-     * РЕЖИМ NODE.JS / BOTHost
-     * ============================================================
-     *
-     * Если document отсутствует — мы находимся не в браузере.
-     * В этом случае запускаем HTTP-сервер.
-     */
+    // ========================================================
+    // РЕЖИМ NODE.JS / BOTHOST
+    // ========================================================
 
-    if (typeof document === "undefined") {
+    const isBrowser =
+        typeof window !== "undefined" &&
+        typeof document !== "undefined";
+
+
+    if (!isBrowser) {
+
         const http = require("http");
         const fs = require("fs");
         const path = require("path");
 
-        const PORT = Number(process.env.PORT) || 3000;
+        const PORT =
+            Number(process.env.PORT) || 3000;
 
-        /*
-         * Так как этот файл находится в:
-         *
-         * public/app.js
-         *
-         * __dirname уже равен:
-         *
-         * /app/public
-         *
-         * Поэтому статические файлы находятся прямо здесь.
-         */
-        const PUBLIC_DIR = __dirname;
+        const PUBLIC_DIR =
+            __dirname;
+
 
         const MIME_TYPES = {
             ".html": "text/html; charset=utf-8",
-            ".css": "text/css; charset=utf-8",
             ".js": "application/javascript; charset=utf-8",
+            ".css": "text/css; charset=utf-8",
             ".json": "application/json; charset=utf-8",
-            ".svg": "image/svg+xml",
             ".png": "image/png",
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",
             ".gif": "image/gif",
-            ".ico": "image/x-icon",
-            ".webp": "image/webp"
+            ".svg": "image/svg+xml",
+            ".webp": "image/webp",
+            ".ico": "image/x-icon"
         };
 
-        const server = http.createServer((req, res) => {
-            if (req.method !== "GET" && req.method !== "HEAD") {
-                res.writeHead(405, {
-                    "Content-Type": "text/plain; charset=utf-8"
-                });
 
-                res.end("Method Not Allowed");
-                return;
-            }
+        const server = http.createServer(
+            (req, res) => {
 
-            let pathname;
+                try {
 
-            try {
-                pathname = decodeURIComponent(
-                    new URL(req.url, "http://localhost").pathname
-                );
-            } catch (error) {
-                res.writeHead(400, {
-                    "Content-Type": "text/plain; charset=utf-8"
-                });
+                    let requestPath =
+                        decodeURIComponent(
+                            (req.url || "/").split("?")[0]
+                        );
 
-                res.end("Bad Request");
-                return;
-            }
 
-            /*
-             * Главная страница.
-             */
-            if (pathname === "/") {
-                pathname = "/index.html";
-            }
+                    if (
+                        !requestPath ||
+                        requestPath === "/"
+                    ) {
 
-            /*
-             * Убираем начальный слэш.
-             */
-            const relativePath = pathname.replace(/^\/+/, "");
+                        requestPath = "/index.html";
 
-            const filePath = path.resolve(
-                PUBLIC_DIR,
-                relativePath
-            );
-
-            /*
-             * Защита от выхода за пределы public.
-             */
-            if (
-                filePath !== PUBLIC_DIR &&
-                !filePath.startsWith(PUBLIC_DIR + path.sep)
-            ) {
-                res.writeHead(403, {
-                    "Content-Type": "text/plain; charset=utf-8"
-                });
-
-                res.end("Forbidden");
-                return;
-            }
-
-            fs.stat(filePath, (statError, stats) => {
-                if (statError || !stats.isFile()) {
-                    res.writeHead(404, {
-                        "Content-Type": "text/plain; charset=utf-8"
-                    });
-
-                    res.end("File Not Found");
-                    return;
-                }
-
-                const extension = path
-                    .extname(filePath)
-                    .toLowerCase();
-
-                const contentType =
-                    MIME_TYPES[extension] ||
-                    "application/octet-stream";
-
-                res.writeHead(200, {
-                    "Content-Type": contentType,
-                    "X-Content-Type-Options": "nosniff"
-                });
-
-                if (req.method === "HEAD") {
-                    res.end();
-                    return;
-                }
-
-                const stream = fs.createReadStream(filePath);
-
-                stream.on("error", () => {
-                    if (!res.headersSent) {
-                        res.writeHead(500);
                     }
 
-                    res.end();
-                });
 
-                stream.pipe(res);
-            });
-        });
+                    // Защита от выхода за пределы public
+                    const safePath =
+                        path.normalize(requestPath)
+                            .replace(/^(\.\.(\/|\\|$))+/, "");
 
-        server.listen(PORT, "0.0.0.0", () => {
-            console.log(
-                `VK Mini App server started on port ${PORT}`
-            );
-        });
 
-        /*
-         * После запуска серверного режима дальше
-         * браузерный код не выполняем.
-         */
+                    const filePath =
+                        path.join(
+                            PUBLIC_DIR,
+                            safePath
+                        );
+
+
+                    if (!filePath.startsWith(PUBLIC_DIR)) {
+
+                        res.writeHead(
+                            403,
+                            {
+                                "Content-Type":
+                                    "text/plain; charset=utf-8"
+                            }
+                        );
+
+                        res.end("Forbidden");
+
+                        return;
+
+                    }
+
+
+                    fs.readFile(
+                        filePath,
+                        (error, data) => {
+
+                            if (error) {
+
+                                // Если файл не найден,
+                                // отдаём index.html.
+                                // Это удобно для Mini App.
+
+                                const fallback =
+                                    path.join(
+                                        PUBLIC_DIR,
+                                        "index.html"
+                                    );
+
+
+                                fs.readFile(
+                                    fallback,
+                                    (fallbackError, fallbackData) => {
+
+                                        if (fallbackError) {
+
+                                            res.writeHead(
+                                                404,
+                                                {
+                                                    "Content-Type":
+                                                        "text/plain; charset=utf-8"
+                                                }
+                                            );
+
+                                            res.end(
+                                                "File not found"
+                                            );
+
+                                            return;
+                                        }
+
+
+                                        res.writeHead(
+                                            200,
+                                            {
+                                                "Content-Type":
+                                                    "text/html; charset=utf-8"
+                                            }
+                                        );
+
+                                        res.end(
+                                            fallbackData
+                                        );
+
+                                    }
+                                );
+
+                                return;
+
+                            }
+
+
+                            const extension =
+                                path.extname(filePath)
+                                    .toLowerCase();
+
+
+                            const contentType =
+                                MIME_TYPES[extension] ||
+                                "application/octet-stream";
+
+
+                            res.writeHead(
+                                200,
+                                {
+                                    "Content-Type":
+                                        contentType
+                                }
+                            );
+
+
+                            res.end(data);
+
+                        }
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        "Server error:",
+                        error
+                    );
+
+
+                    res.writeHead(
+                        500,
+                        {
+                            "Content-Type":
+                                "text/plain; charset=utf-8"
+                        }
+                    );
+
+
+                    res.end(
+                        "Internal server error"
+                    );
+
+                }
+
+            }
+        );
+
+
+        server.listen(
+            PORT,
+            "0.0.0.0",
+            () => {
+
+                console.log(
+                    `VK Mini App server started on port ${PORT}`
+                );
+
+            }
+        );
+
+
         return;
     }
 
 
-    /*
-     * ============================================================
-     * РЕЖИМ БРАУЗЕРА / VK MINI APP
-     * ============================================================
-     *
-     * Ниже находится обычная логика Mini App.
-     */
+    // ========================================================
+    // ДАЛЬШЕ — КОД, КОТОРЫЙ РАБОТАЕТ В БРАУЗЕРЕ
+    // ========================================================
+
 
     const state = {
+
         step: 1,
+
         product: null,
+
         goal: null,
+
         resources: null
+
     };
 
 
-    /*
-     * ============================================================
-     * VK BRIDGE
-     * ============================================================
-     */
+    // ========================================================
+    // ПОЛУЧЕНИЕ ЭЛЕМЕНТОВ
+    // ========================================================
+
+    const screen =
+        document.getElementById("screen");
+
+
+    const stepCounter =
+        document.getElementById("stepCounter");
+
+
+    const brandElement =
+        document.getElementById("brand");
+
+
+    // ========================================================
+    // ИНИЦИАЛИЗАЦИЯ VK
+    // ========================================================
 
     async function initVK() {
+
         try {
+
             if (
                 window.vkBridge &&
                 typeof window.vkBridge.send === "function"
             ) {
-                await Promise.race([
-                    window.vkBridge.send("VKWebAppInit"),
 
-                    new Promise(resolve => {
-                        setTimeout(resolve, 1000);
-                    })
+                await Promise.race([
+
+                    window.vkBridge.send(
+                        "VKWebAppInit"
+                    ),
+
+                    new Promise(
+                        resolve =>
+                            setTimeout(
+                                resolve,
+                                1000
+                            )
+                    )
+
                 ]);
+
             }
+
         } catch (error) {
+
             console.log(
-                "VK Bridge init skipped:",
+                "VK Bridge initialization skipped:",
                 error
             );
+
         }
+
     }
 
 
-    /*
-     * ============================================================
-     * БРЕНД
-     * ============================================================
-     */
+    // ========================================================
+    // БРЕНД
+    // ========================================================
 
     function renderBrand() {
-        const brandElement =
-            document.getElementById("brand");
 
-        if (brandElement) {
+        if (
+            brandElement &&
+            typeof CONFIG !== "undefined"
+        ) {
+
             brandElement.textContent =
                 CONFIG.brand || "";
+
         }
+
     }
 
 
-    /*
-     * ============================================================
-     * СЧЁТЧИК ШАГОВ
-     * ============================================================
-     */
+    // ========================================================
+    // СЧЁТЧИК
+    // ========================================================
 
     function updateStepCounter() {
-        const counter =
-            document.getElementById("stepCounter");
 
-        if (!counter) {
+        if (!stepCounter) {
             return;
         }
 
-        counter.textContent =
-            state.step <= 3
-                ? `${state.step} / 3`
-                : "Результат";
+
+        if (state.step <= 3) {
+
+            stepCounter.textContent =
+                `${state.step} / 3`;
+
+        } else {
+
+            stepCounter.textContent =
+                "Результат";
+
+        }
+
     }
 
 
-    /*
-     * ============================================================
-     * АНИМАЦИЯ
-     * ============================================================
-     */
+    // ========================================================
+    // АНИМАЦИЯ
+    // ========================================================
 
     function restartAnimation() {
-        const screen =
-            document.getElementById("screen");
 
         if (!screen) {
             return;
         }
+
 
         screen.style.animation = "none";
 
-        requestAnimationFrame(() => {
-            screen.style.animation = "";
-        });
+
+        void screen.offsetWidth;
+
+
+        screen.style.animation = "";
+
     }
 
 
-    /*
-     * ============================================================
-     * ОТРИСОВКА
-     * ============================================================
-     */
+    // ========================================================
+    // ОТРИСОВКА
+    // ========================================================
 
     function render(content) {
-        const screen =
-            document.getElementById("screen");
 
         if (!screen) {
+
+            console.error(
+                "Ошибка: элемент #screen не найден."
+            );
+
             return;
+
         }
 
-        screen.innerHTML = content;
+
+        screen.innerHTML =
+            content;
+
 
         restartAnimation();
+
+
+        updateStepCounter();
+
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth"
+        });
+
     }
 
 
-    /*
-     * ============================================================
-     * КНОПКА ВАРИАНТА ОТВЕТА
-     * ============================================================
-     */
+    // ========================================================
+    // СОЗДАНИЕ КНОПКИ ВАРИАНТА
+    //
+    // ВАЖНО:
+    // Здесь именно .option-button.
+    // Это класс из существующего CSS.
+    // ========================================================
 
-    function createOption(item, type) {
+    function createOption(
+        item,
+        type
+    ) {
+
         return `
             <button
                 class="option-button"
@@ -314,6 +428,7 @@
                 data-type="${type}"
                 data-value="${item.id}"
             >
+
                 <span class="option-title">
                     ${item.title}
                 </span>
@@ -327,18 +442,19 @@
                         `
                         : ""
                 }
+
             </button>
         `;
+
     }
 
 
-    /*
-     * ============================================================
-     * ОБРАБОТКА ОТВЕТОВ
-     * ============================================================
-     */
+    // ========================================================
+    // ОБРАБОТЧИКИ ВАРИАНТОВ
+    // ========================================================
 
     function attachOptionHandlers() {
+
         document
             .querySelectorAll(".option-button")
             .forEach(button => {
@@ -350,63 +466,80 @@
                         const type =
                             button.dataset.type;
 
+
                         const value =
                             button.dataset.value;
 
 
                         if (type === "product") {
 
-                            state.product = value;
+                            state.product =
+                                value;
 
                             state.step = 2;
 
                             renderGoalQuestion();
 
                             return;
+
                         }
 
 
                         if (type === "goal") {
 
-                            state.goal = value;
+                            state.goal =
+                                value;
 
                             state.step = 3;
 
                             renderResourcesQuestion();
 
                             return;
+
                         }
 
 
                         if (type === "resources") {
 
-                            state.resources = value;
+                            state.resources =
+                                value;
 
                             state.step = 4;
 
                             renderResult();
 
                             return;
+
                         }
+
                     }
                 );
+
             });
+
     }
 
 
-    /*
-     * ============================================================
-     * СТАРТОВЫЙ ЭКРАН
-     * ============================================================
-     */
+    // ========================================================
+    // СТАРТОВЫЙ ЭКРАН
+    // ========================================================
 
     function renderStart() {
 
         state.step = 1;
 
+        state.product = null;
+
+        state.goal = null;
+
+        state.resources = null;
+
+
         updateStepCounter();
 
+
         render(`
+
             <section class="start-card">
 
                 <div class="eyebrow">
@@ -429,12 +562,21 @@
                     Начать
                 </button>
 
+                <div class="note">
+                    Всего 3 вопроса.
+                    В конце вы получите
+                    персональную рекомендацию.
+                </div>
+
             </section>
+
         `);
 
 
         const startButton =
-            document.getElementById("startButton");
+            document.getElementById(
+                "startButton"
+            );
 
 
         if (startButton) {
@@ -446,17 +588,18 @@
                     state.step = 1;
 
                     renderProductQuestion();
+
                 }
             );
+
         }
+
     }
 
 
-    /*
-     * ============================================================
-     * ВОПРОС 1
-     * ============================================================
-     */
+    // ========================================================
+    // ВОПРОС 1
+    // ========================================================
 
     function renderProductQuestion() {
 
@@ -464,7 +607,21 @@
 
         updateStepCounter();
 
+
+        const options =
+            CONFIG.products
+                .map(
+                    item =>
+                        createOption(
+                            item,
+                            "product"
+                        )
+                )
+                .join("");
+
+
         render(`
+
             <section class="question-card">
 
                 <div class="eyebrow">
@@ -475,29 +632,29 @@
                     Что вы продаёте?
                 </h2>
 
+                <p class="description">
+                    Выберите вариант,
+                    который ближе всего
+                    к вашей модели бизнеса.
+                </p>
+
                 <div class="option-list">
-                    ${CONFIG.products
-                        .map(item =>
-                            createOption(
-                                item,
-                                "product"
-                            )
-                        )
-                        .join("")}
+                    ${options}
                 </div>
 
             </section>
+
         `);
 
+
         attachOptionHandlers();
+
     }
 
 
-    /*
-     * ============================================================
-     * ВОПРОС 2
-     * ============================================================
-     */
+    // ========================================================
+    // ВОПРОС 2
+    // ========================================================
 
     function renderGoalQuestion() {
 
@@ -505,7 +662,21 @@
 
         updateStepCounter();
 
+
+        const options =
+            CONFIG.goals
+                .map(
+                    item =>
+                        createOption(
+                            item,
+                            "goal"
+                        )
+                )
+                .join("");
+
+
         render(`
+
             <section class="question-card">
 
                 <div class="eyebrow">
@@ -516,29 +687,56 @@
                     Какая сейчас главная задача?
                 </h2>
 
+                <p class="description">
+                    Выберите главную задачу,
+                    которую хотите решить.
+                </p>
+
                 <div class="option-list">
-                    ${CONFIG.goals
-                        .map(item =>
-                            createOption(
-                                item,
-                                "goal"
-                            )
-                        )
-                        .join("")}
+                    ${options}
                 </div>
 
+                <button
+                    class="back-button"
+                    id="backButton"
+                    type="button"
+                >
+                    ← Назад
+                </button>
+
             </section>
+
         `);
 
+
         attachOptionHandlers();
+
+
+        const backButton =
+            document.getElementById(
+                "backButton"
+            );
+
+
+        if (backButton) {
+
+            backButton.addEventListener(
+                "click",
+                () => {
+
+                    renderProductQuestion();
+
+                }
+            );
+
+        }
+
     }
 
 
-    /*
-     * ============================================================
-     * ВОПРОС 3
-     * ============================================================
-     */
+    // ========================================================
+    // ВОПРОС 3
+    // ========================================================
 
     function renderResourcesQuestion() {
 
@@ -546,7 +744,21 @@
 
         updateStepCounter();
 
+
+        const options =
+            CONFIG.resources
+                .map(
+                    item =>
+                        createOption(
+                            item,
+                            "resources"
+                        )
+                )
+                .join("");
+
+
         render(`
+
             <section class="question-card">
 
                 <div class="eyebrow">
@@ -557,29 +769,57 @@
                     Сколько ресурсов вы готовы вложить?
                 </h2>
 
+                <p class="description">
+                    Не только деньги — учитываем также
+                    время и готовность разбираться
+                    с системой.
+                </p>
+
                 <div class="option-list">
-                    ${CONFIG.resources
-                        .map(item =>
-                            createOption(
-                                item,
-                                "resources"
-                            )
-                        )
-                        .join("")}
+                    ${options}
                 </div>
 
+                <button
+                    class="back-button"
+                    id="backButton"
+                    type="button"
+                >
+                    ← Назад
+                </button>
+
             </section>
+
         `);
 
+
         attachOptionHandlers();
+
+
+        const backButton =
+            document.getElementById(
+                "backButton"
+            );
+
+
+        if (backButton) {
+
+            backButton.addEventListener(
+                "click",
+                () => {
+
+                    renderGoalQuestion();
+
+                }
+            );
+
+        }
+
     }
 
 
-    /*
-     * ============================================================
-     * КЛЮЧ РЕЗУЛЬТАТА
-     * ============================================================
-     */
+    // ========================================================
+    // КЛЮЧ РЕЗУЛЬТАТА
+    // ========================================================
 
     function getResultKey() {
 
@@ -588,29 +828,31 @@
             state.goal,
             state.resources
         ].join("_");
+
     }
 
 
-    /*
-     * ============================================================
-     * РЕЗУЛЬТАТ
-     * ============================================================
-     */
+    // ========================================================
+    // ПОЛУЧЕНИЕ РЕЗУЛЬТАТА
+    // ========================================================
 
     function getResult() {
 
+        const key =
+            getResultKey();
+
+
         return (
-            CONFIG.results[getResultKey()] ||
+            CONFIG.results[key] ||
             CONFIG.results.default
         );
+
     }
 
 
-    /*
-     * ============================================================
-     * ЭКРАН РЕЗУЛЬТАТА
-     * ============================================================
-     */
+    // ========================================================
+    // ЭКРАН РЕЗУЛЬТАТА
+    // ========================================================
 
     function renderResult() {
 
@@ -618,19 +860,27 @@
 
         updateStepCounter();
 
-        const result = getResult();
+
+        const result =
+            getResult();
 
 
         const botHelpUrl =
             CONFIG.botHelpLandingUrl || "#";
 
 
-        const botHelpButtonText =
+        const materialsButtonText =
             CONFIG.materialsButtonText ||
             "Получить полезные материалы";
 
 
+        const privacyUrl =
+            CONFIG.privacyPolicyUrl ||
+            "#";
+
+
         render(`
+
             <section class="result-card">
 
                 <div class="result-label">
@@ -646,29 +896,57 @@
                 </p>
 
 
-                <!--
-                    КНОПКА 1.
-                    Переход на ВК-лендинг BotHelp.
-                -->
+                <!-- ======================================
+                     СОГЛАСИЕ НА РАССЫЛКУ
+                     ====================================== -->
+
+                <label
+                    class="consent-row"
+                    for="consentCheckbox"
+                >
+
+                    <input
+                        type="checkbox"
+                        id="consentCheckbox"
+                    >
+
+                    <span>
+                        Нажимая на эту кнопку, Вы
+                        соглашаетесь с получением
+                        рассылки и
+                        <a
+                            href="${privacyUrl}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Политикой конфиденциальности
+                        </a>
+                    </span>
+
+                </label>
+
+
+                <!-- ======================================
+                     BOTHELP
+                     ====================================== -->
 
                 <a
                     class="primary-button"
+                    id="materialsButton"
                     href="${botHelpUrl}"
                     target="_blank"
                     rel="noopener noreferrer"
-                    id="materialsButton"
                 >
-                    ${botHelpButtonText}
+                    ${materialsButtonText}
                 </a>
 
 
-                <!--
-                    КНОПКА 2.
-                    Переход в личные сообщения ВК.
-                -->
+                <!-- ======================================
+                     ЛИЧНЫЕ СООБЩЕНИЯ
+                     ====================================== -->
 
                 <a
-                    class="secondary-button messages-button"
+                    class="secondary-button"
                     href="${CONFIG.personalMessagesUrl}"
                     target="_blank"
                     rel="noopener noreferrer"
@@ -680,10 +958,9 @@
                 </a>
 
 
-                <!--
-                    КНОПКА 3.
-                    Повторное прохождение.
-                -->
+                <!-- ======================================
+                     НАЧАТЬ ЗАНОВО
+                     ====================================== -->
 
                 <button
                     class="secondary-button"
@@ -696,19 +973,81 @@
                     }
                 </button>
 
+
+                <div class="note">
+                    Результат сформирован
+                    на основе ваших ответов.
+                    Это не универсальный рецепт,
+                    а отправная точка
+                    для выбора механики.
+                </div>
+
             </section>
+
         `);
 
 
-        /*
-         * Проверяем ссылку BotHelp.
-         */
+        const consentCheckbox =
+            document.getElementById(
+                "consentCheckbox"
+            );
+
 
         const materialsButton =
             document.getElementById(
                 "materialsButton"
             );
 
+
+        // ----------------------------------------------------
+        // Кнопка материалов работает только после согласия
+        // ----------------------------------------------------
+
+        if (
+            consentCheckbox &&
+            materialsButton
+        ) {
+
+            materialsButton.style.pointerEvents =
+                "none";
+
+            materialsButton.style.opacity =
+                "0.5";
+
+
+            consentCheckbox.addEventListener(
+                "change",
+                () => {
+
+                    if (
+                        consentCheckbox.checked
+                    ) {
+
+                        materialsButton.style.pointerEvents =
+                            "auto";
+
+                        materialsButton.style.opacity =
+                            "1";
+
+                    } else {
+
+                        materialsButton.style.pointerEvents =
+                            "none";
+
+                        materialsButton.style.opacity =
+                            "0.5";
+
+                    }
+
+                }
+            );
+
+        }
+
+
+        // ----------------------------------------------------
+        // Если ссылка BotHelp ещё не вставлена
+        // ----------------------------------------------------
 
         if (
             materialsButton &&
@@ -725,17 +1064,20 @@
 
                     event.preventDefault();
 
+
                     alert(
                         "Сначала вставьте ссылку на ВК-лендинг BotHelp в файл public/config.js."
                     );
+
                 }
             );
+
         }
 
 
-        /*
-         * Повторное прохождение.
-         */
+        // ----------------------------------------------------
+        // Кнопка "Пройти заново"
+        // ----------------------------------------------------
 
         const restartButton =
             document.getElementById(
@@ -756,17 +1098,18 @@
                     state.resources = null;
 
                     renderProductQuestion();
+
                 }
             );
+
         }
+
     }
 
 
-    /*
-     * ============================================================
-     * ЗАПУСК MINI APP
-     * ============================================================
-     */
+    // ========================================================
+    // ЗАПУСК
+    // ========================================================
 
     document.addEventListener(
         "DOMContentLoaded",
@@ -777,7 +1120,9 @@
             await initVK();
 
             renderStart();
+
         }
     );
+
 
 })();
